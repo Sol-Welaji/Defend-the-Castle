@@ -1,4 +1,4 @@
--
+
 local QueueService = {}
 QueueService.__index = QueueService
 
@@ -84,3 +84,4 @@ function QueueService:GetPlayers()
 end
 
 return QueueService
+
