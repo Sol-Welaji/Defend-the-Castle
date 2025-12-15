@@ -1,209 +1,183 @@
 -- SERVICES
 local Players = game:GetService("Players")
-local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
--- DATASTORES
--- Stores all characters the player owns
-local inventoryDataStore = DataStoreService:GetDataStore("PlayerInventoryData")
-
--- Stores which characters the player has equipped
-local equippedDataStore = DataStoreService:GetDataStore("PlayerEquippedData")
-
--- CONSTANTS
-local MAX_INVENTORY = 1000 -- Maximum number of characters a player can own
+-- PLAYER
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
 -- REMOTES
--- Remote used when a player rolls a character
-local rollRemote = ReplicatedStorage:WaitForChild("GachaRollRemote")
+local Remotes = ReplicatedStorage:WaitForChild("REs")
+local getInventoryRemote = Remotes:WaitForChild("GetInventory")
+local equipCharacterRemote = Remotes:WaitForChild("EquipCharacter")
+local sellCharacterRemote = Remotes:WaitForChild("SellCharacter")
+local refreshInventoryRemote = Remotes:WaitForChild("RefreshInventory")
 
--- Remote to add a character to inventory
-local addToInventoryRemote = Instance.new("RemoteEvent")
-addToInventoryRemote.Name = "AddToInventory"
-addToInventoryRemote.Parent = ReplicatedStorage
+-- GUI
+local inventoryGui = playerGui:WaitForChild("InventoryGui")
+local openButton = inventoryGui:WaitForChild("OpenButton")
+local mainFrame = inventoryGui:WaitForChild("MainFrame")
+local closeButton = mainFrame.TitleBar.CloseButton
+local countLabel = mainFrame.TitleBar.CountLabel
+local scrollFrame = mainFrame.CharacterScroll
+local detailsPanel = mainFrame.DetailsPanel
 
--- Remote to request inventory + equipped data
-local getInventoryRemote = Instance.new("RemoteFunction")
-getInventoryRemote.Name = "GetInventory"
-getInventoryRemote.Parent = ReplicatedStorage
+-- MODULES
+local CharacterStats = require(ReplicatedStorage.Modules.CharacterLobbyStats)
 
--- Remote to equip a character
-local equipCharacterRemote = Instance.new("RemoteEvent")
-equipCharacterRemote.Name = "EquipCharacter"
-equipCharacterRemote.Parent = ReplicatedStorage
+-- STATE
+local currentInventory = {}
+local currentEquipped = {}
+local selectedCharacter = nil
+local sellAllGui = nil
 
--- Remote to sell a character
-local sellCharacterRemote = Instance.new("RemoteEvent")
-sellCharacterRemote.Name = "SellCharacter"
-sellCharacterRemote.Parent = ReplicatedStorage
-
--- SELL PRICES BASED ON RARITY
-local sellPrices = {
-	Common = 50,
-	Rare = 150,
-	Epic = 350,
-	Legendary = 750,
-	Mythic = 2000,
-	Godly = 5000
+-- RARITY COLORS
+local rarityColors = {
+	Common = Color3.fromRGB(180, 180, 180),
+	Rare = Color3.fromRGB(100, 180, 255),
+	Epic = Color3.fromRGB(170, 80, 230),
+	Legendary = Color3.fromRGB(255, 220, 80),
+	Mythic = Color3.fromRGB(255, 100, 180),
+	Godly = Color3.fromRGB(255, 80, 80)
 }
 
--- SERVER-SIDE PLAYER DATA (NOT SAVED DIRECTLY)
-local playerInventories = {} -- [UserId] = inventory table
-local playerEquipped = {}    -- [UserId] = equipped table
+-- RARITY ORDER
+local rarityOrder = {"Common", "Rare", "Epic", "Legendary", "Mythic", "Godly"}
 
--- LOAD PLAYER INVENTORY FROM DATASTORE
-local function loadInventory(player)
-	local success, data = pcall(function()
-		return inventoryDataStore:GetAsync(player.UserId)
-	end)
-
-	if success and data then
-		playerInventories[player.UserId] = data
-		print(player.Name .. " inventory loaded: " .. #data .. " characters")
-	else
-		playerInventories[player.UserId] = {}
-		print(player.Name .. " starting with empty inventory")
-	end
+-- PRECOMPUTED RARITY PRIORITY ( )
+local rarityPriority = {}
+for index, rarity in ipairs(rarityOrder) do
+	rarityPriority[rarity] = index
 end
 
--- LOAD EQUIPPED CHARACTERS FROM DATASTORE
-local function loadEquipped(player)
-	local success, data = pcall(function()
-		return equippedDataStore:GetAsync(player.UserId)
-	end)
+-- SORT FUNCTION
+local function sortInventory()
+	table.sort(currentInventory, function(a, b)
+		local aPriority = rarityPriority[a.rarity] or math.huge
+		local bPriority = rarityPriority[b.rarity] or math.huge
 
-	if success and data then
-		playerEquipped[player.UserId] = data
-	else
-		playerEquipped[player.UserId] = {}
-	end
+		if aPriority ~= bPriority then
+			return aPriority < bPriority
+		end
+
+		return a.name < b.name
+	end)
 end
 
--- SAVE INVENTORY TO DATASTORE
-local function saveInventory(player)
-	if not playerInventories[player.UserId] then return end
+-- DETAILS PANEL
+local function showDetailsPanel(character)
+	detailsPanel.Visible = true
+	detailsPanel.CharacterName.Text = character.name
+	detailsPanel.CharacterImage.Image = character.data.icon
+	detailsPanel.RarityLabel.Text = "Rarity: " .. character.rarity
+	detailsPanel.RarityLabel.TextColor3 = rarityColors[character.rarity]
+end
 
-	local success, err = pcall(function()
-		inventoryDataStore:SetAsync(player.UserId, playerInventories[player.UserId])
+-- INVENTORY DISPLAY
+local function updateInventoryDisplay()
+	for _, child in ipairs(scrollFrame:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+
+	sortInventory()
+	countLabel.Text = #currentInventory .. "/1000"
+
+	for i, character in ipairs(currentInventory) do
+		local frame = Instance.new("Frame")
+		frame.Size = UDim2.new(0, 90, 0, 110)
+		frame.LayoutOrder = i
+		frame.BackgroundColor3 = rarityColors[character.rarity]
+		frame.BorderSizePixel = 0
+		frame.Parent = scrollFrame
+
+		Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+		local img = Instance.new("ImageLabel")
+		img.Size = UDim2.new(0.9, 0, 0, 65)
+		img.Position = UDim2.new(0.05, 0, 0, 5)
+		img.BackgroundTransparency = 1
+		img.Image = character.data.icon
+		img.Parent = frame
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Size = UDim2.new(0.9, 0, 0, 30)
+		nameLabel.Position = UDim2.new(0.05, 0, 0, 75)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = character.name
+		nameLabel.TextWrapped = true
+		nameLabel.Font = Enum.Font.Gotham
+		nameLabel.TextSize = 12
+		nameLabel.TextColor3 = Color3.new(1,1,1)
+		nameLabel.Parent = frame
+
+		local button = Instance.new("TextButton")
+		button.Size = UDim2.new(1, 0, 1, 0)
+		button.BackgroundTransparency = 1
+		button.Text = ""
+		button.Parent = frame
+
+		button.MouseButton1Click:Connect(function()
+			selectedCharacter = character
+			showDetailsPanel(character)
+		end)
+	end
+
+	-- Dynamic canvas size
+	local itemsPerRow = math.max(1, math.floor(scrollFrame.AbsoluteSize.X / 100))
+	local rows = math.ceil(#currentInventory / itemsPerRow)
+	scrollFrame.CanvasSize = UDim2.new(0, 0, 0, rows * 120)
+end
+
+-- LOAD INVENTORY
+local function loadInventory()
+	local success, inventory, equipped = pcall(function()
+		return getInventoryRemote:InvokeServer()
 	end)
 
 	if success then
-		print("Saved inventory for " .. player.Name)
+		currentInventory = inventory or {}
+		currentEquipped = equipped or {}
+		updateInventoryDisplay()
 	else
-		warn("Failed to save inventory for " .. player.Name .. ": " .. err)
+		warn("Inventory load failed")
 	end
 end
 
--- SAVE EQUIPPED DATA TO DATASTORE
-local function saveEquipped(player)
-	if not playerEquipped[player.UserId] then return end
-
-	pcall(function()
-		equippedDataStore:SetAsync(player.UserId, playerEquipped[player.UserId])
-	end)
-end
-
--- PLAYER JOIN
-Players.PlayerAdded:Connect(function(player)
-	loadInventory(player)
-	loadEquipped(player)
-end)
-
--- PLAYER LEAVE
-Players.PlayerRemoving:Connect(function(player)
-	saveInventory(player)
-	saveEquipped(player)
-
-	-- Clear memory
-	playerInventories[player.UserId] = nil
-	playerEquipped[player.UserId] = nil
-end)
-
--- SERVER SHUTDOWN SAVE
-game:BindToClose(function()
-	for _, player in pairs(Players:GetPlayers()) do
-		saveInventory(player)
-		saveEquipped(player)
-	end
-	wait(2)
-end)
-
--- CLIENT REQUESTS INVENTORY DATA
-getInventoryRemote.OnServerInvoke = function(player)
-	return playerInventories[player.UserId] or {}, playerEquipped[player.UserId] or {}
-end
-
--- ADD CHARACTER TO INVENTORY
-addToInventoryRemote.OnServerEvent:Connect(function(player, characterName, rarity, characterData)
-	local inventory = playerInventories[player.UserId]
-	if not inventory then return end
-
-	-- Check inventory limit
-	if #inventory >= MAX_INVENTORY then
-		print(player.Name .. " inventory is full!")
-		return
-	end
-
-	-- Insert new character
-	table.insert(inventory, {
-		name = characterName,
-		rarity = rarity,
-		data = characterData,
-		id = os.time() .. math.random(1000, 9999) -- Unique character ID
-	})
-
-	print("Added " .. characterName .. " (" .. rarity .. ") to " .. player.Name .. "'s inventory")
-end)
-
--- EQUIP CHARACTER
-equipCharacterRemote.OnServerEvent:Connect(function(player, characterId, slotNumber)
-	local equipped = playerEquipped[player.UserId]
-	if not equipped then return end
-
-	local inventory = playerInventories[player.UserId]
-	if not inventory then return end
-
-	-- Find character in inventory
-	local character = nil
-	for _, char in ipairs(inventory) do
-		if char.id == characterId then
-			character = char
-			break
-		end
-	end
-
-	-- Equip character into slot
-	if character then
-		equipped[slotNumber] = character
-		print(player.Name .. " equipped " .. character.name .. " to slot " .. slotNumber)
+-- OPEN / CLOSE
+openButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+	detailsPanel.Visible = false
+	if mainFrame.Visible then
+		loadInventory()
 	end
 end)
 
--- SELL CHARACTER
-sellCharacterRemote.OnServerEvent:Connect(function(player, characterId)
-	local inventory = playerInventories[player.UserId]
-	if not inventory then return end
+closeButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+	detailsPanel.Visible = false
+end)
 
-	for i, char in ipairs(inventory) do
-		if char.id == characterId then
-			-- Get sell value based on rarity
-			local sellPrice = sellPrices[char.rarity] or 10
-
-			-- Give gems
-			local leaderstats = player:FindFirstChild("leaderstats")
-			if leaderstats then
-				local gems = leaderstats:FindFirstChild("Gems")
-				if gems then
-					gems.Value = gems.Value + sellPrice
-				end
-			end
-
-			-- Remove character from inventory
-			table.remove(inventory, i)
-			print(player.Name .. " sold " .. char.name .. " for " .. sellPrice .. " gems")
-			break
-		end
+-- EQUIP
+detailsPanel.EquipButton.MouseButton1Click:Connect(function()
+	if selectedCharacter then
+		equipCharacterRemote:FireServer(selectedCharacter.id)
 	end
 end)
 
-print("Inventory DataStore System loaded!")
+-- SELL
+detailsPanel.SellButton.MouseButton1Click:Connect(function()
+	if selectedCharacter then
+		sellCharacterRemote:FireServer(selectedCharacter.id)
+		selectedCharacter = nil
+		detailsPanel.Visible = false
+		loadInventory()
+	end
+end)
+
+-- REFRESH
+refreshInventoryRemote.OnClientEvent:Connect(loadInventory)
+
+print("✅ Inventory GUI loaded ( )")
