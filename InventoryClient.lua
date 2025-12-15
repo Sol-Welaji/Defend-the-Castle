@@ -1,17 +1,17 @@
---// SERVICES
+-- SERVICES
 -- Services are cached once to avoid repeated global lookups
 -- and to clearly document external dependencies
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
---// PLAYER CONTEXT
+-- PLAYER CONTEXT
 -- PlayerGui is the correct runtime container for UI.
 -- StarterGui should NEVER be used directly in LocalScripts.
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
---// REMOTES
+-- REMOTES
 -- All remotes are grouped under a single folder to keep
 -- ReplicatedStorage organized and scalable
 local Remotes = ReplicatedStorage:WaitForChild("REs")
@@ -21,7 +21,7 @@ local equipCharacterRemote = Remotes:WaitForChild("EquipCharacter")
 local sellCharacterRemote = Remotes:WaitForChild("SellCharacter")
 local refreshInventoryRemote = Remotes:WaitForChild("RefreshInventory")
 
---// GUI REFERENCES
+-- GUI REFERENCES
 -- UI is cloned into PlayerGui at runtime, so references
 -- must always be pulled from PlayerGui, not StarterGui
 local inventoryGui = playerGui:WaitForChild("InventoryGui")
@@ -36,7 +36,7 @@ local countLabel = titleBar:WaitForChild("CountLabel")
 local scrollFrame = mainFrame:WaitForChild("CharacterScroll")
 local detailsPanel = mainFrame:WaitForChild("DetailsPanel")
 
---// MODULES
+-- MODULES
 -- CharacterStats contains all character metadata.
 -- Keeping this in a shared module avoids hardcoding icons,
 -- rarities, or names inside UI logic.
@@ -44,7 +44,7 @@ local CharacterStats = require(
 	ReplicatedStorage:WaitForChild("Modules"):WaitForChild("CharacterLobbyStats")
 )
 
---// CLIENT STATE
+-- CLIENT STATE
 -- These tables represent a client-side snapshot of
 -- server-authoritative inventory data.
 local currentInventory = {}
@@ -53,7 +53,7 @@ local currentEquipped = {}
 -- Tracks which character is currently selected in the UI
 local selectedCharacter = nil
 
---// RARITY CONFIGURATION
+-- RARITY CONFIGURATION
 -- Visual configuration is data-driven so rarities can be
 -- rebalanced without touching UI or logic code.
 local rarityColors = {
@@ -76,7 +76,7 @@ for index, rarity in ipairs(rarityOrder) do
 	rarityPriority[rarity] = index
 end
 
---// INVENTORY SORTING
+-- INVENTORY SORTING
 -- Inventory sorting prioritizes rarity first, then name.
 -- Using a precomputed priority table ensures:
 --  • O(n log n) behavior
@@ -96,7 +96,7 @@ local function sortInventory()
 	end)
 end
 
---// DETAILS PANEL
+-- DETAILS PANEL
 -- Isolated into its own function so animations, transitions,
 -- or additional stats can be added later without touching
 -- inventory rendering logic.
@@ -110,7 +110,7 @@ local function showDetailsPanel(character)
 	detailsPanel.RarityLabel.TextColor3 = rarityColors[character.rarity]
 end
 
---// INVENTORY RENDERING
+-- INVENTORY RENDERING
 -- The UI is fully rebuilt intentionally to avoid stale state
 -- and to guarantee the UI always matches server data.
 local function updateInventoryDisplay()
@@ -177,7 +177,7 @@ local function updateInventoryDisplay()
 	scrollFrame.CanvasSize = UDim2.fromOffset(0, rows * 120)
 end
 
---// INVENTORY LOADING
+-- INVENTORY LOADING
 -- Server remains authoritative. The client only renders
 -- whatever the server returns.
 local function loadInventory()
@@ -196,7 +196,7 @@ local function loadInventory()
 	updateInventoryDisplay()
 end
 
---// UI INTERACTION
+-- UI INTERACTION
 openButton.MouseButton1Click:Connect(function()
 	mainFrame.Visible = not mainFrame.Visible
 	detailsPanel.Visible = false
@@ -211,7 +211,7 @@ closeButton.MouseButton1Click:Connect(function()
 	detailsPanel.Visible = false
 end)
 
---// CHARACTER ACTIONS
+-- CHARACTER ACTIONS
 detailsPanel.EquipButton.MouseButton1Click:Connect(function()
 	if selectedCharacter then
 		equipCharacterRemote:FireServer(selectedCharacter.id)
@@ -228,9 +228,10 @@ detailsPanel.SellButton.MouseButton1Click:Connect(function()
 	loadInventory()
 end)
 
---// SERVER-DRIVEN REFRESH
+-- SERVER-DRIVEN REFRESH
 -- Allows the server to force UI refreshes when inventory
 -- changes externally (gacha, admin actions, trades).
 refreshInventoryRemote.OnClientEvent:Connect(loadInventory)
 
 print(" Inventory GUI LocalScript initialized successfully")
+
