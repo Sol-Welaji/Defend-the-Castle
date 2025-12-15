@@ -1,117 +1,178 @@
+-- SERVICES
+-- Services are cached once for performance, clarity,
+-- and to document all engine dependencies up front.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
+-- PLAYER CONTEXT
+-- LocalPlayer is only valid in LocalScripts and represents
+-- the client executing this code.
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local LeaveQueueEvent = ReplicatedStorage:WaitForChild("LeaveQueue")
+local playerGui = player:WaitForChild("PlayerGui")
 
--- GUIs
+-- Character references must be refreshed on respawn,
+-- so they are NOT treated as static.
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- REMOTES
+-- All queue-related remotes are centralized in ReplicatedStorage
+-- to maintain a clean client/server contract.
+local LeaveQueueEvent = ReplicatedStorage:WaitForChild("LeaveQueue")
+local QueuePadUpdateEvent = ReplicatedStorage:WaitForChild("QueuePadUpdate")
+
+-- UI SETUP
+-- UI is created client-side to ensure it is:
+-- • Not replicated unnecessarily
+-- • Fully client-authoritative
+-- • Easy to clean up or reset
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "QueueUI"
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
 
 local leaveButton = Instance.new("TextButton")
 leaveButton.Name = "LeaveButton"
-leaveButton.Parent = screenGui
-leaveButton.Size = UDim2.new(0, 200, 0, 50)
-leaveButton.Position = UDim2.new(0.5, -100, 0.85, 0)
+leaveButton.Size = UDim2.fromOffset(200, 50)
+leaveButton.Position = UDim2.fromScale(0.5, 0.85)
+leaveButton.AnchorPoint = Vector2.new(0.5, 0)
 leaveButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-leaveButton.TextColor3 = Color3.new(1,1,1)
+leaveButton.TextColor3 = Color3.new(1, 1, 1)
 leaveButton.TextScaled = true
 leaveButton.Visible = false
 leaveButton.Text = "LEAVE QUEUE"
+leaveButton.Parent = screenGui
 
--- Variables
+-- Rounded corners for visual polish without impacting logic
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = leaveButton
+
+-- CLIENT STATE
+-- Tracks whether THIS client is currently locked into a queue.
+-- State is client-driven but validated by the server.
 local inQueue = false
+
+-- Camera state is stored so it can be restored exactly,
+-- rather than guessing default values.
 local originalCameraType
 local originalCameraSubject
 
--- Lock movement
-local function LockMovement()
+-- CHARACTER CONTROL
+-- Movement locking is handled by modifying Humanoid properties.
+-- This avoids anchoring parts, which can break animations
+-- and physics replication.
+local function setMovementEnabled(enabled: boolean)
 	if not character then return end
+
 	local humanoid = character:FindFirstChildWhichIsA("Humanoid")
-	if humanoid then
+	if not humanoid then return end
+
+	if enabled then
+		humanoid.WalkSpeed = 16
+		humanoid.JumpPower = 50
+	else
 		humanoid.WalkSpeed = 0
 		humanoid.JumpPower = 0
 	end
 end
 
--- Unlock movement
-local function UnlockMovement()
-	if not character then return end
-	local humanoid = character:FindFirstChildWhichIsA("Humanoid")
-	if humanoid then
-		humanoid.WalkSpeed = 16
-		humanoid.JumpPower = 50
-	end
-end
+-- CAMERA CONTROL
+-- Camera is placed into Scriptable mode so the player
+-- cannot override it via mouse movement.
+local function lockCameraToPad(pad: Model)
+	local camera = workspace.CurrentCamera
 
--- Camera front lock
-local function LockCameraToPad(pad)
-	local cam = workspace.CurrentCamera
+	-- Store previous camera state for clean restoration
+	originalCameraType = camera.CameraType
+	originalCameraSubject = camera.CameraSubject
 
-	originalCameraType = cam.CameraType
-	originalCameraSubject = cam.CameraSubject
-
-	cam.CameraType = Enum.CameraType.Scriptable
+	camera.CameraType = Enum.CameraType.Scriptable
 
 	local padCFrame = pad:GetPivot()
 
-	-- Put camera 6 studs in front looking at pad
-	local camPos = padCFrame.Position + padCFrame.LookVector * -10 + Vector3.new(0, 3, 0)
-	local camLook = padCFrame.Position + Vector3.new(0, 2, 0)
+	-- Camera offset is calculated relative to pad orientation
+	-- instead of hardcoded world positions.
+	local cameraPosition =
+		padCFrame.Position
+		- padCFrame.LookVector * 10
+		+ Vector3.new(0, 3, 0)
 
-	cam.CFrame = CFrame.lookAt(camPos, camLook)
+	local lookTarget = padCFrame.Position + Vector3.new(0, 2, 0)
+
+	camera.CFrame = CFrame.lookAt(cameraPosition, lookTarget)
 end
 
--- Restore camera
-local function RestoreCamera()
-	local cam = workspace.CurrentCamera
-	cam.CameraType = originalCameraType or Enum.CameraType.Custom
-	cam.CameraSubject = originalCameraSubject or player.Character:WaitForChild("Humanoid")
+-- Restores the camera to its original state without
+-- assuming defaults.
+local function restoreCamera()
+	local camera = workspace.CurrentCamera
+
+	camera.CameraType = originalCameraType or Enum.CameraType.Custom
+	camera.CameraSubject = originalCameraSubject
 end
 
--- Called by server when player joins a queue
-ReplicatedStorage:WaitForChild("QueuePadUpdate").OnClientEvent:Connect(function(pad, count, max)
-	-- Only lock camera when YOU join
-	local hrp = character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+-- QUEUE STATE MANAGEMENT
+-- Centralized function ensures entering the queue
+-- always applies the same rules.
+local function enterQueue(pad: Model)
+	if inQueue then return end
 
-	-- If this pad includes this player ? lock
-	if pad and pad:FindFirstChild("BillboardGui") then
-		if count > 0 then
-			-- You are in queue if you are on the pad
-			local distance = (hrp.Position - pad:GetPivot().Position).Magnitude
-			if distance < 10 then
-				if not inQueue then
-					inQueue = true
-					LockMovement()
-					LockCameraToPad(pad)
-					leaveButton.Visible = true
-				end
-			end
-		end
-	end
-end)
+	inQueue = true
+	setMovementEnabled(false)
+	lockCameraToPad(pad)
+	leaveButton.Visible = true
+end
 
--- Leave queue button
-leaveButton.MouseButton1Click:Connect(function()
-	if inQueue then
-		inQueue = false
-		UnlockMovement()
-		RestoreCamera()
-		leaveButton.Visible = false
-		LeaveQueueEvent:FireServer()
-	end
-end)
+-- Centralized exit logic avoids duplicated cleanup code.
+local function exitQueue()
+	if not inQueue then return end
 
--- If teleported or queue ends ? reset automatically
-LeaveQueueEvent.OnClientEvent:Connect(function()
 	inQueue = false
-	UnlockMovement()
-	RestoreCamera()
+	setMovementEnabled(true)
+	restoreCamera()
 	leaveButton.Visible = false
+end
+
+-- SERVER → CLIENT UPDATES
+-- Server informs the client when queue state changes.
+-- The client validates whether the update applies to THEM.
+QueuePadUpdateEvent.OnClientEvent:Connect(function(pad: Model, count: number)
+	if not pad or not character then return end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	-- Distance check ensures this only applies to the local player
+	-- without relying on server-side player lists.
+	local distance = (root.Position - pad:GetPivot().Position).Magnitude
+
+	if count > 0 and distance <= 10 then
+		enterQueue(pad)
+	end
 end)
+
+-- UI INTERACTION
+leaveButton.MouseButton1Click:Connect(function()
+	if not inQueue then return end
+
+	exitQueue()
+	LeaveQueueEvent:FireServer()
+end)
+
+-- FORCED QUEUE EXIT
+-- Server can force an exit due to teleport, match start,
+-- or administrative override.
+LeaveQueueEvent.OnClientEvent:Connect(function()
+	exitQueue()
+end)
+
+-- CHARACTER RESPAWN HANDLING
+-- Character references must be refreshed on respawn
+-- to prevent stale humanoid or camera references.
+player.CharacterAdded:Connect(function(newCharacter)
+	character = newCharacter
+	exitQueue()
+end)
+
+print(" Queue client script initialized successfully")
