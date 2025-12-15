@@ -3,67 +3,59 @@ local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 
 -- DATASTORE
--- Stores the player's gem amount
 local gemsDataStore = DataStoreService:GetDataStore("PlayerGemsData")
 
 -- CONSTANTS
-local STARTING_GEMS = 0 -- Gems new players start with
+local STARTING_GEMS = 0 
+local MAX_ATTEMPTS = 3  
 
 -- LOAD PLAYER GEMS FROM DATASTORE
 local function loadPlayerData(player)
 	local success, data
 	local attempts = 0
 
-	-- Try loading up to 3 times
 	repeat
-		attempts = attempts + 1
+		attempts += 1
 		success, data = pcall(function()
 			return gemsDataStore:GetAsync(player.UserId)
 		end)
 
-		-- If it fails, warn and retry
 		if not success then
-			warn("Failed to load data for " .. player.Name .. " (Attempt " .. attempts .. ")")
+			warn(string.format("Failed to load data for %s (Attempt %d)", player.Name, attempts))
 			wait(1)
 		end
-	until success or attempts >= 3
+	until success or attempts >= MAX_ATTEMPTS
 
-	-- Returns nil if player is new or loading failed
 	return data
 end
 
 -- SAVE PLAYER GEMS TO DATASTORE
 local function savePlayerData(player)
-	-- Make sure leaderstats exists
 	local leaderstats = player:FindFirstChild("leaderstats")
 	if not leaderstats then return end
 
-	-- Make sure Gems value exists
 	local gems = leaderstats:FindFirstChild("Gems")
 	if not gems then return end
 
 	local success, errorMsg
 	local attempts = 0
 
-	-- Try saving up to 3 times
 	repeat
-		attempts = attempts + 1
+		attempts += 1
 		success, errorMsg = pcall(function()
 			gemsDataStore:SetAsync(player.UserId, gems.Value)
 		end)
 
-		-- If it fails, warn and retry
 		if not success then
-			warn("Failed to save data for " .. player.Name .. " (Attempt " .. attempts .. "): " .. errorMsg)
+			warn(string.format("Failed to save data for %s (Attempt %d): %s", player.Name, attempts, errorMsg))
 			wait(1)
 		end
-	until success or attempts >= 3
+	until success or attempts >= MAX_ATTEMPTS
 
-	-- Final result
 	if success then
-		print("Successfully saved " .. gems.Value .. " gems for " .. player.Name)
+		print(string.format("Successfully saved %d gems for %s", gems.Value, player.Name))
 	else
-		warn("Failed to save data for " .. player.Name .. " after 3 attempts!")
+		warn(string.format("Failed to save data for %s after %d attempts!", player.Name, MAX_ATTEMPTS))
 	end
 end
 
@@ -82,7 +74,6 @@ Players.PlayerAdded:Connect(function(player)
 
 	-- Load saved gem data
 	local data = loadPlayerData(player)
-
 	if data then
 		gems.Value = data
 		print(player.Name .. " loaded with " .. data .. " gems")
@@ -92,18 +83,14 @@ Players.PlayerAdded:Connect(function(player)
 end)
 
 -- PLAYER LEAVE
-Players.PlayerRemoving:Connect(function(player)
-	savePlayerData(player)
-end)
+Players.PlayerRemoving:Connect(savePlayerData)
 
 -- SERVER SHUTDOWN
 game:BindToClose(function()
 	print("Server shutting down - saving all player data...")
-
 	for _, player in pairs(Players:GetPlayers()) do
 		savePlayerData(player)
 	end
-
 	wait(2)
 end)
 
