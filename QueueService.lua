@@ -1,86 +1,152 @@
+-- QueueService
+-- A reusable, server-side queue abstraction designed
+-- for teleport pads, matchmaking, or lobby systems.
+--
+-- Design goals:
+-- • O(1) membership checks
+-- • Deterministic player order
+-- • Clear queue lifecycle control
+-- • No reliance on external state
+-- • Safe to reuse across multiple pads
 
 local QueueService = {}
 QueueService.__index = QueueService
 
--- Constructor
+-- CONSTRUCTOR
+-- Creates a new queue with a fixed capacity.
+-- The queue does NOT teleport players itself — it only
+-- manages state and emits signals. This separation keeps
+-- the service reusable and testable.
 function QueueService.new(maxPlayers: number)
-	assert(maxPlayers > 0, "MaxPlayers must be greater than 0")
+	assert(
+		typeof(maxPlayers) == "number" and maxPlayers > 0,
+		"QueueService.new requires a positive maxPlayers value"
+	)
 
 	local self = setmetatable({}, QueueService)
 
-	-- Maximum players allowed in the queue
+	-- Maximum number of players allowed in the queue.
+	-- This value is immutable after construction to avoid
+	-- race conditions or inconsistent capacity logic.
 	self.MaxPlayers = maxPlayers
 
-	-- Ordered list of players in the queue
-	self.Queue = {}
+	-- Ordered array preserving join order.
+	-- Order matters for teleport grouping.
+	self._queue = {}
 
-	-- Fast lookup table for O(1) membership checks
-	self.PlayerLookup = {}
+	-- Hash table used for constant-time membership checks.
+	-- This avoids expensive linear searches.
+	self._lookup = {}
 
-	-- Fired whenever players are added/removed
+	-- BindableEvent allows external systems (pads, UI, etc.)
+	-- to react to queue changes without tight coupling.
 	self.QueueChanged = Instance.new("BindableEvent")
 
-	-- Prevents adding players once queue is full
+	-- When sealed, new players are rejected even if they
+	-- attempt to join again. This prevents edge-case joins
+	-- during teleport countdowns.
 	self._sealed = false
 
 	return self
 end
 
--- Adds a player to the queue
-function QueueService:Add(player: Player)
-	-- Reject invalid states
+-- INTERNAL UTILITIES
+
+-- Fires QueueChanged with a defensive copy to prevent
+-- external mutation of internal state.
+function QueueService:_signalChange()
+	self.QueueChanged:Fire(table.clone(self._queue))
+end
+
+-- PUBLIC API
+
+-- Adds a player to the queue.
+-- Returns true on success, false if rejected.
+function QueueService:Add(player: Player): boolean
+	-- Reject invalid or unsafe states
 	if self._sealed then return false end
-	if self.PlayerLookup[player] then return false end
-	if #self.Queue >= self.MaxPlayers then return false end
+	if not player or not player:IsA("Player") then return false end
+	if self._lookup[player] then return false end
+	if #self._queue >= self.MaxPlayers then return false end
 
 	-- Insert player
-	self.PlayerLookup[player] = true
-	table.insert(self.Queue, player)
+	self._lookup[player] = true
+	table.insert(self._queue, player)
 
-	-- Notify listeners
-	self.QueueChanged:Fire(self.Queue)
+	-- Notify listeners of state change
+	self:_signalChange()
 
-	-- Seal queue if full
-	if #self.Queue == self.MaxPlayers then
+	-- Seal queue once capacity is reached
+	if #self._queue == self.MaxPlayers then
 		self._sealed = true
 	end
 
 	return true
 end
 
--- Removes a player from the queue
-function QueueService:Remove(player: Player)
-	if not self.PlayerLookup[player] then return false end
+-- Removes a player from the queue.
+-- Safe to call redundantly.
+function QueueService:Remove(player: Player): boolean
+	if not self._lookup[player] then
+		return false
+	end
 
-	self.PlayerLookup[player] = nil
+	-- Clear lookup first to avoid race conditions
+	self._lookup[player] = nil
 
-	-- Remove player from ordered queue
-	for i = #self.Queue, 1, -1 do
-		if self.Queue[i] == player then
-			table.remove(self.Queue, i)
+	-- Remove from ordered queue (reverse loop avoids shifting issues)
+	for i = #self._queue, 1, -1 do
+		if self._queue[i] == player then
+			table.remove(self._queue, i)
 			break
 		end
 	end
 
-	-- Allow queue to accept players again
+	-- Unseal queue to allow new players
 	self._sealed = false
 
-	self.QueueChanged:Fire(self.Queue)
+	self:_signalChange()
 	return true
 end
 
--- Clears the entire queue
+-- Clears the queue entirely.
+-- Used after teleporting players or aborting matchmaking.
 function QueueService:Flush()
-	table.clear(self.Queue)
-	table.clear(self.PlayerLookup)
+	table.clear(self._queue)
+	table.clear(self._lookup)
 	self._sealed = false
 
-	self.QueueChanged:Fire(self.Queue)
+	self:_signalChange()
 end
 
--- Returns a safe copy of the queue
-function QueueService:GetPlayers()
-	return table.clone(self.Queue)
+-- Returns a copy of players currently in the queue.
+-- Callers must NOT mutate the returned table.
+function QueueService:GetPlayers(): {Player}
+	return table.clone(self._queue)
+end
+
+-- Returns the current queue size.
+-- Exposed to avoid leaking internal tables.
+function QueueService:GetCount(): number
+	return #self._queue
+end
+
+-- Indicates whether the queue is currently full or sealed.
+function QueueService:IsSealed(): boolean
+	return self._sealed
+end
+
+-- CLEANUP
+-- Explicit destroy method prevents BindableEvent leaks
+-- if queues are dynamically created/destroyed.
+function QueueService:Destroy()
+	if self.QueueChanged then
+		self.QueueChanged:Destroy()
+	end
+
+	table.clear(self._queue)
+	table.clear(self._lookup)
+	self._sealed = true
 end
 
 return QueueService
