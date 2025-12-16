@@ -9,8 +9,7 @@ local RunService = game:GetService("RunService")
 
 -- DATASTORE SETUP
 
--- A single, versioned datastore name allows future migrations
--- without wiping player data
+-- A single, versioned datastore name allows future migrations without wiping player data
 local GEMS_DATASTORE_NAME = "PlayerGemsData_v1"
 local GemsDataStore = DataStoreService:GetDataStore(GEMS_DATASTORE_NAME)
 
@@ -22,16 +21,14 @@ local MAX_RETRY_ATTEMPTS = 3
 local RETRY_DELAY = 1
 
 -- INTERNAL STATE
--- Session cache prevents unnecessary DataStore calls
--- and protects against overwriting newer values
+-- Session cache prevents unnecessary DataStore calls and protects against overwriting newer values
 local sessionCache = {}
 
 
 -- DATA LOADING
 
 -- Loads player data safely with retries and session caching.
--- This function is intentionally isolated to make it reusable
--- and easier to unit test in the future.
+-- This function is intentionally isolated to make it reusable and easier to unit test in the future.
 local function loadPlayerData(player: Player): number
 	local userId = player.UserId
 	local attempts = 0
@@ -70,8 +67,7 @@ local function loadPlayerData(player: Player): number
 end
 
 -- DATA SAVING
--- Saves player data using UpdateAsync to prevent data loss
--- when multiple servers attempt to write simultaneously
+-- Saves player data using UpdateAsync to prevent data loss when multiple servers attempt to write simultaneously
 local function savePlayerData(player: Player)
 	local userId = player.UserId
 	local cachedValue = sessionCache[userId]
@@ -88,8 +84,7 @@ local function savePlayerData(player: Player)
 
 		local success, err = pcall(function()
 			GemsDataStore:UpdateAsync(userId, function(oldValue)
-				-- Old value is ignored intentionally; session cache
-				-- represents the most up-to-date server authority
+				-- Old value is ignored intentionally; session cachd represents the most up-to-date server authority
 				return cachedValue
 			end)
 		end)
@@ -161,3 +156,4 @@ if RunService:IsStudio() then
 else
 	print("[GEMS] DataStore system initialized (Live)")
 end
+
