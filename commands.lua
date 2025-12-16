@@ -1,12 +1,11 @@
---// SERVICES
+-- SERVICES
 -- Players is used to resolve message senders into Player objects
 local Players = game:GetService("Players")
 
--- TextChatService is the modern, non-deprecated system for
--- handling chat input on Roblox.
+-- TextChatService is the modern, non-deprecated system for handling chat input on Roblox.
 local TextChatService = game:GetService("TextChatService")
 
---// CONFIGURATION
+-- CONFIGURATION
 -- Prefix allows commands to be changed without touching logic
 local COMMAND_PREFIX = "/"
 
@@ -14,7 +13,7 @@ local COMMAND_PREFIX = "/"
 local GIVE_COMMAND = "give"
 local CURRENCY_NAME = "gems"
 
---// INTERNAL HELPERS
+-- INTERNAL HELPERS
 -- Safely resolves a player's Gems IntValue without assuming structure.
 -- This avoids runtime errors if leaderstats are missing or renamed.
 local function getGemsValue(player: Player): IntValue?
@@ -38,7 +37,7 @@ local function parseMessage(text: string): {string}
 	return args
 end
 
---// CHAT COMMAND HANDLER
+-- CHAT COMMAND HANDLER
 -- This function is executed for every chat message sent by players.
 -- Using TextChatService ensures compatibility with future Roblox updates.
 TextChatService.OnIncomingMessage = function(message: TextChatMessage)
@@ -92,4 +91,5 @@ end
 
 print("Developer gem command loaded (TextChatService)")
 print("Usage: /give gems <amount>")
+
 
