@@ -1,6 +1,4 @@
--- SERVICES
--- ReplicatedStorage is used to store RemoteEvents that define
--- the client/server communication contract.
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- REMOTE EVENTS
@@ -37,15 +35,13 @@ QueueCountEvent.OnClientEvent:Connect(function(pad: Model, count: number, max: n
 		return
 	end
 
-	-- Using string.format avoids implicit string concatenation
-	-- and improves readability for formatted UI text.
+	-- Using string.format avoids implicit string concatenation and improves readability for formatted UI text.
 	countLabel.Text = string.format("%d / %d", count, max)
 end)
 
 -- QUEUE TIMER HANDLING
 -- Updates the countdown text shown above a queue pad.
--- The server remains authoritative over timing,
--- while the client only reflects visual state.
+-- The server remains authoritative over timing, while the client only reflects visual state.
 QueueTimerEvent.OnClientEvent:Connect(function(pad: Model, timeLeft: number)
 	local timerLabel = getBillboardLabel(pad, "TimerLabel")
 	if not timerLabel then
@@ -59,3 +55,4 @@ QueueTimerEvent.OnClientEvent:Connect(function(pad: Model, timeLeft: number)
 		timerLabel.Text = ""
 	end
 end
+
