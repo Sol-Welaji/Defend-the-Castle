@@ -148,12 +148,3 @@ game:BindToClose(function()
 	-- Yield briefly to allow DataStore requests to complete
 	task.wait(2)
 end)
-
--- DEBUG
-
-if RunService:IsStudio() then
-	print("[GEMS] DataStore system initialized (Studio)")
-else
-	print("[GEMS] DataStore system initialized (Live)")
-end
-
