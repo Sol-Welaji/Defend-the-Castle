@@ -14,9 +14,6 @@ local COMMAND_PREFIX = "/"
 local GIVE_COMMAND = "give"
 local CURRENCY_NAME = "gems"
 
--- Safety limit prevents abuse or accidental massive values
-local MAX_GIVE_AMOUNT = 1_000_000
-
 --// INTERNAL HELPERS
 -- Safely resolves a player's Gems IntValue without assuming structure.
 -- This avoids runtime errors if leaderstats are missing or renamed.
@@ -75,11 +72,6 @@ TextChatService.OnIncomingMessage = function(message: TextChatMessage)
 		return
 	end
 
-	if amount > MAX_GIVE_AMOUNT then
-		warn(("Blocked excessive gem grant (%d) from %s"):format(amount, player.Name))
-		return
-	end
-
 	-- Resolve Gems value safely
 	local gems = getGemsValue(player)
 	if not gems then
@@ -100,3 +92,4 @@ end
 
 print("Developer gem command loaded (TextChatService)")
 print("Usage: /give gems <amount>")
+
