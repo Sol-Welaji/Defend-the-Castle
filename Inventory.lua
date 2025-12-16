@@ -1,6 +1,5 @@
 -- SERVICES
--- Services are cached once to reduce global lookups and
--- clearly define script dependencies
+-- Services are cached once to reduce global lookups and clearly define script dependencies
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -12,8 +11,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- REMOTES
--- Remotes are grouped under a single folder to prevent
--- namespace pollution inside ReplicatedStorage
+-- Remotes are grouped under a single folder to prevent namespace pollution inside ReplicatedStorage
 local Remotes = ReplicatedStorage:WaitForChild("REs")
 
 local getInventoryRemote = Remotes:WaitForChild("GetInventory")
@@ -22,8 +20,7 @@ local sellCharacterRemote = Remotes:WaitForChild("SellCharacter")
 local refreshInventoryRemote = Remotes:WaitForChild("RefreshInventory")
 
 -- GUI REFERENCES
--- GUI elements are referenced once and reused, which avoids
--- unnecessary Instance lookups during runtime
+-- GUI elements are referenced once and reused, which avoids unnecessary Instance lookups during runtime
 local inventoryGui = playerGui:WaitForChild("InventoryGui")
 
 local openButton = inventoryGui:WaitForChild("OpenButton")
@@ -37,15 +34,13 @@ local scrollFrame = mainFrame:WaitForChild("CharacterScroll")
 local detailsPanel = mainFrame:WaitForChild("DetailsPanel")
 
 -- MODULES
--- Character metadata is kept in a shared module so that
--- the client does not hardcode stats or icons
+-- Character metadata is kept in a shared module so that the client does not hardcode stats or icons
 local CharacterStats = require(
 	ReplicatedStorage:WaitForChild("Modules"):WaitForChild("CharacterLobbyStats")
 )
 
 -- CLIENT STATE
--- These tables represent the client-side snapshot of
--- server-authoritative inventory data
+-- These tables represent the client-side snapshot of server-authoritative inventory data
 local currentInventory = {}
 local currentEquipped = {}
 
@@ -53,8 +48,7 @@ local currentEquipped = {}
 local selectedCharacter = nil
 
 -- RARITY VISUAL CONFIG
--- Visual styling is data-driven so rarities can be
--- adjusted without touching UI logic
+-- Visual styling is data-driven so rarities can be adjusted without touching UI logic
 local rarityColors = {
 	Common = Color3.fromRGB(180, 180, 180),
 	Rare = Color3.fromRGB(100, 180, 255),
@@ -75,8 +69,7 @@ end
 
 -- INVENTORY SORTING
 -- Inventory sorting prioritizes rarity first, then name.
--- Using a precomputed priority table prevents O(n²) scans
--- and ensures stable, predictable ordering.
+-- Using a precomputed priority table prevents O(n²) scans and ensures stable, predictable ordering.
 local function sortInventory()
 	table.sort(currentInventory, function(a, b)
 		local aRank = rarityPriority[a.rarity] or math.huge
@@ -93,8 +86,7 @@ end
 
 -- DETAILS PANEL LOGIC
 -- Displays detailed information for the selected character.
--- This is isolated so future UI transitions or animations
--- can be added without touching inventory logic.
+-- This is isolated so future UI transitions or animations can be added without touching inventory logic.
 local function showDetailsPanel(character)
 	detailsPanel.Visible = true
 
@@ -107,8 +99,7 @@ end
 
 -- INVENTORY UI RENDERING
 -- Rebuilds the inventory UI from currentInventory.
--- UI is regenerated intentionally to avoid stale state
--- and simplify synchronization with server data.
+-- UI is regenerated intentionally to avoid stale state and simplify synchronization with server data.
 local function updateInventoryDisplay()
 	-- Clear existing frames safely
 	for _, child in ipairs(scrollFrame:GetChildren()) do
@@ -153,8 +144,7 @@ local function updateInventoryDisplay()
 		nameLabel.Text = character.name
 		nameLabel.Parent = frame
 
-		-- Transparent button captures input without
-		-- interfering with layout or visuals
+		-- Transparent button captures input without interfering with layout or visuals
 		local clickButton = Instance.new("TextButton")
 		clickButton.Size = UDim2.fromScale(1, 1)
 		clickButton.BackgroundTransparency = 1
@@ -226,8 +216,8 @@ detailsPanel.SellButton.MouseButton1Click:Connect(function()
 end)
 
 -- SERVER SYNC
--- Allows the server to force a refresh when inventory
--- changes due to trades, rewards, or admin actions
+-- Allows the server to force a refresh when inventory changes due to trades, rewards, or admin actions
 refreshInventoryRemote.OnClientEvent:Connect(loadInventory)
 
 print(" Inventory GUI initialized successfully")
+
