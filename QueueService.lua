@@ -1,13 +1,3 @@
--- QueueService
--- A reusable, server-side queue abstraction designed
--- for teleport pads, matchmaking, or lobby systems.
---
--- Design goals:
--- • O(1) membership checks
--- • Deterministic player order
--- • Clear queue lifecycle control
--- • No reliance on external state
--- • Safe to reuse across multiple pads
 
 local QueueService = {}
 QueueService.__index = QueueService
@@ -26,8 +16,7 @@ function QueueService.new(maxPlayers: number)
 	local self = setmetatable({}, QueueService)
 
 	-- Maximum number of players allowed in the queue.
-	-- This value is immutable after construction to avoid
-	-- race conditions or inconsistent capacity logic.
+	-- This value is immutable after construction to avoid race conditions or inconsistent capacity logic.
 	self.MaxPlayers = maxPlayers
 
 	-- Ordered array preserving join order.
@@ -137,8 +126,7 @@ function QueueService:IsSealed(): boolean
 end
 
 -- CLEANUP
--- Explicit destroy method prevents BindableEvent leaks
--- if queues are dynamically created/destroyed.
+-- Explicit destroy method prevents BindableEvent leak if queues are dynamically created/destroyed.
 function QueueService:Destroy()
 	if self.QueueChanged then
 		self.QueueChanged:Destroy()
@@ -150,4 +138,5 @@ function QueueService:Destroy()
 end
 
 return QueueService
+
 
