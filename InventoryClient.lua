@@ -22,8 +22,7 @@ local sellCharacterRemote = Remotes:WaitForChild("SellCharacter")
 local refreshInventoryRemote = Remotes:WaitForChild("RefreshInventory")
 
 -- GUI REFERENCES
--- UI is cloned into PlayerGui at runtime, so references
--- must always be pulled from PlayerGui, not StarterGui
+-- UI is cloned into PlayerGui at runtime, so references must always be pulled from PlayerGui, not StarterGui
 local inventoryGui = playerGui:WaitForChild("InventoryGui")
 
 local openButton = inventoryGui:WaitForChild("OpenButton")
@@ -38,15 +37,13 @@ local detailsPanel = mainFrame:WaitForChild("DetailsPanel")
 
 -- MODULES
 -- CharacterStats contains all character metadata.
--- Keeping this in a shared module avoids hardcoding icons,
--- rarities, or names inside UI logic.
+-- Keeping this in a shared module avoids hardcoding icons, rarities, or names inside UI logic.
 local CharacterStats = require(
 	ReplicatedStorage:WaitForChild("Modules"):WaitForChild("CharacterLobbyStats")
 )
 
 -- CLIENT STATE
--- These tables represent a client-side snapshot of
--- server-authoritative inventory data.
+-- These tables represent a client-side snapshot of server-authoritative inventory data.
 local currentInventory = {}
 local currentEquipped = {}
 
@@ -54,8 +51,7 @@ local currentEquipped = {}
 local selectedCharacter = nil
 
 -- RARITY CONFIGURATION
--- Visual configuration is data-driven so rarities can be
--- rebalanced without touching UI or logic code.
+-- Visual configuration is data-driven so rarities can be rebalanced without touching UI or logic code.
 local rarityColors = {
 	Common = Color3.fromRGB(180, 180, 180),
 	Rare = Color3.fromRGB(100, 180, 255),
@@ -69,8 +65,7 @@ local rarityColors = {
 local rarityOrder = { "Common", "Rare", "Epic", "Legendary", "Mythic", "Godly" }
 
 -- Precompute rarity priority ONCE.
--- This avoids repeated table scans inside sort functions,
--- which is a common performance mistake.
+-- This avoids repeated table scans inside sort functions, which is a common performance mistake.
 local rarityPriority = {}
 for index, rarity in ipairs(rarityOrder) do
 	rarityPriority[rarity] = index
@@ -97,8 +92,7 @@ local function sortInventory()
 end
 
 -- DETAILS PANEL
--- Isolated into its own function so animations, transitions,
--- or additional stats can be added later without touching
+-- Isolated into its own function so animations, transitions, or additional stats can be added later without touching
 -- inventory rendering logic.
 local function showDetailsPanel(character)
 	detailsPanel.Visible = true
@@ -178,8 +172,7 @@ local function updateInventoryDisplay()
 end
 
 -- INVENTORY LOADING
--- Server remains authoritative. The client only renders
--- whatever the server returns.
+-- Server remains authoritative. The client only renders whatever the server returns.
 local function loadInventory()
 	local success, inventory, equipped = pcall(function()
 		return getInventoryRemote:InvokeServer()
@@ -229,9 +222,5 @@ detailsPanel.SellButton.MouseButton1Click:Connect(function()
 end)
 
 -- SERVER-DRIVEN REFRESH
--- Allows the server to force UI refreshes when inventory
--- changes externally (gacha, admin actions, trades).
+-- Allows the server to force UI refreshes when inventory changes externally (gacha, admin actions, trades).
 refreshInventoryRemote.OnClientEvent:Connect(loadInventory)
-
-print(" Inventory GUI LocalScript initialized successfully")
-
