@@ -9,13 +9,11 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Character references must be refreshed on respawn,
--- so they are NOT treated as static.
+-- Character references must be refreshed on respawn, so they are NOT treated as static.
 local character = player.Character or player.CharacterAdded:Wait()
 
 -- REMOTES
--- All queue-related remotes are centralized in ReplicatedStorage
--- to maintain a clean client/server contract.
+-- All queue-related remotes are centralized in ReplicatedStorage to maintain a clean client/server contract.
 local LeaveQueueEvent = ReplicatedStorage:WaitForChild("LeaveQueue")
 local QueuePadUpdateEvent = ReplicatedStorage:WaitForChild("QueuePadUpdate")
 
@@ -163,3 +161,4 @@ player.CharacterAdded:Connect(function(newCharacter)
 	character = newCharacter
 	exitQueue()
 end)
+
