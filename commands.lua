@@ -88,8 +88,3 @@ TextChatService.OnIncomingMessage = function(message: TextChatMessage)
 	-- Returning nil allows the chat message to still appear normally
 	return
 end
-
-print("Developer gem command loaded (TextChatService)")
-print("Usage: /give gems <amount>")
-
-
