@@ -1,19 +1,14 @@
--- SERVICES
--- TeleportService is responsible for moving queued players
--- into the destination place once conditions are met.
+
 local TeleportService = game:GetService("TeleportService")
 
--- Players is required for resolving characters into Player objects
--- and for cleanup when players leave the server.
+-- Players is required for resolving characters into Player objects and for cleanup when players leave the server.
 local Players = game:GetService("Players")
 
--- ReplicatedStorage acts as the shared contract layer
--- between server logic and client UI.
+-- ReplicatedStorage acts as the shared contract layer between server logic and client UI.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- DEPENDENCIES
--- QueueService abstracts queue logic away from this script,
--- allowing this file to focus purely on orchestration.
+-- QueueService abstracts queue logic away from this script, allowing this file to focus purely on orchestration.
 local QueueService = require(ReplicatedStorage.Modules.QueueService)
 
 -- All queue pads must exist under this container.
@@ -46,8 +41,7 @@ local activeCountdowns: {[Instance]: boolean} = {}
 
 -- TIMER / TELEPORT LOGIC
 -- Handles countdown execution and teleporting once complete.
--- This function is intentionally isolated to keep timing logic
--- deterministic and easy to reason about.
+-- This function is intentionally isolated to keep timing logic deterministic and easy to reason about.
 local function startQueueCountdown(pad: Instance, queue)
 	-- Prevent duplicate timers for the same pad
 	if activeCountdowns[pad] then
@@ -90,8 +84,7 @@ local function startQueueCountdown(pad: Instance, queue)
 end
 
 -- PAD INITIALIZATION
--- Each pad is configured purely through attributes,
--- making this system scalable and designer-friendly.
+-- Each pad is configured purely through attributes, making this system scalable and designer-friendly.
 for _, pad in ipairs(QueuePadsFolder:GetChildren()) do
 	local maxPlayers = pad:GetAttribute("MaxPlayers")
 	local placeId = pad:GetAttribute("PlaceId")
@@ -160,6 +153,3 @@ Players.PlayerRemoving:Connect(function(player)
 		queue:Remove(player)
 	end
 end)
-
-print(" Queue server system initialized successfully")
-
