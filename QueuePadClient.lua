@@ -1,13 +1,11 @@
 -- SERVICES
--- Services are cached once for performance, clarity,
--- and to document all engine dependencies up front.
+-- Services are cached once for performance, clarity, and to document all engine dependencies up front.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 -- PLAYER CONTEXT
--- LocalPlayer is only valid in LocalScripts and represents
--- the client executing this code.
+-- LocalPlayer is only valid in LocalScripts and represents the client executing this code.
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -53,15 +51,13 @@ corner.Parent = leaveButton
 -- State is client-driven but validated by the server.
 local inQueue = false
 
--- Camera state is stored so it can be restored exactly,
--- rather than guessing default values.
+-- Camera state is stored so it can be restored exactly, rather than guessing default values.
 local originalCameraType
 local originalCameraSubject
 
 -- CHARACTER CONTROL
 -- Movement locking is handled by modifying Humanoid properties.
--- This avoids anchoring parts, which can break animations
--- and physics replication.
+-- This avoids anchoring parts, which can break animations and physics replication.
 local function setMovementEnabled(enabled: boolean)
 	if not character then return end
 
@@ -78,8 +74,7 @@ local function setMovementEnabled(enabled: boolean)
 end
 
 -- CAMERA CONTROL
--- Camera is placed into Scriptable mode so the player
--- cannot override it via mouse movement.
+-- Camera is placed into Scriptable mode so the player cannot override it via mouse movement.
 local function lockCameraToPad(pad: Model)
 	local camera = workspace.CurrentCamera
 
@@ -91,8 +86,7 @@ local function lockCameraToPad(pad: Model)
 
 	local padCFrame = pad:GetPivot()
 
-	-- Camera offset is calculated relative to pad orientation
-	-- instead of hardcoded world positions.
+	-- Camera offset is calculated relative to pad orientation instead of hardcoded world positions.
 	local cameraPosition =
 		padCFrame.Position
 		- padCFrame.LookVector * 10
@@ -103,8 +97,7 @@ local function lockCameraToPad(pad: Model)
 	camera.CFrame = CFrame.lookAt(cameraPosition, lookTarget)
 end
 
--- Restores the camera to its original state without
--- assuming defaults.
+-- Restores the camera to its original state without assuming defaults.
 local function restoreCamera()
 	local camera = workspace.CurrentCamera
 
@@ -113,8 +106,7 @@ local function restoreCamera()
 end
 
 -- QUEUE STATE MANAGEMENT
--- Centralized function ensures entering the queue
--- always applies the same rules.
+-- Centralized function ensures entering the queue always applies the same rules.
 local function enterQueue(pad: Model)
 	if inQueue then return end
 
@@ -143,8 +135,7 @@ QueuePadUpdateEvent.OnClientEvent:Connect(function(pad: Model, count: number)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
 
-	-- Distance check ensures this only applies to the local player
-	-- without relying on server-side player lists.
+	-- Distance check ensures this only applies to the local player without relying on server-side player lists.
 	local distance = (root.Position - pad:GetPivot().Position).Magnitude
 
 	if count > 0 and distance <= 10 then
@@ -161,18 +152,14 @@ leaveButton.MouseButton1Click:Connect(function()
 end)
 
 -- FORCED QUEUE EXIT
--- Server can force an exit due to teleport, match start,
--- or administrative override.
+-- Server can force an exit due to teleport, match start, or administrative override.
 LeaveQueueEvent.OnClientEvent:Connect(function()
 	exitQueue()
 end)
 
 -- CHARACTER RESPAWN HANDLING
--- Character references must be refreshed on respawn
--- to prevent stale humanoid or camera references.
+-- Character references must be refreshed on respawn to prevent stale humanoid or camera references.
 player.CharacterAdded:Connect(function(newCharacter)
 	character = newCharacter
 	exitQueue()
 end)
-
-print(" Queue client script initialized successfully")
