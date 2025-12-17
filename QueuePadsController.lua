@@ -153,3 +153,4 @@ Players.PlayerRemoving:Connect(function(player)
 		queue:Remove(player)
 	end
 end)
+
