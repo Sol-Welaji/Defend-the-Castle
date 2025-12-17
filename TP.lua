@@ -1,58 +1,122 @@
 
--- TeleportService handles all cross-place and private server teleports
-local TeleportService = game:GetService("TeleportService")
-
--- Players service is required for player events
 local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local RunService = game:GetService("RunService")
 
--- Destination place ID
--- Kept as a constant so it is easy to change or reuse
+--// CLASS DEFINITION
+
+local TeleportController = {}
+TeleportController.__index = TeleportController
+
+--// CONSTANTS
+
 local DESTINATION_PLACE_ID = 93465852001946
 
--- Teleport data sent to the destination server
--- This allows the receiving place to configure gameplay
--- (difficulty, gamemode, matchmaking rules, etc.)
-local TELEPORT_DATA = {
-	mode = "Easy",
-}
+-- Camera offset relative to player root when stabilizing physics
+-- This prevents Roblox from snapping the character mid-teleport
+local CAMERA_OFFSET = CFrame.new(0, 3, -10)
 
--- Handles teleporting a single player into a reserved server
-local function teleportPlayer(player: Player)
-	-- TeleportOptions allows us to configure how the teleport behaves
-	local teleportOptions = Instance.new("TeleportOptions")
+--// CONSTRUCTOR
 
-	-- Ensures all players are placed into a brand-new private server rather than an existing public instance
-	teleportOptions.ShouldReserveServer = true
+function TeleportController.new()
+	local self = setmetatable({}, TeleportController)
 
-	-- Attach structured data to the teleport
-	-- This data can be read on the destination server via Player:GetJoinData().TeleportData
-	teleportOptions:SetTeleportData(TELEPORT_DATA)
+	-- Centralized teleport configuration
+	self.TeleportData = {
+		mode = "Easy",
+		spawnType = "MatchInstance",
+		timestamp = os.time()
+	}
 
-	-- Use pcall to prevent server crashes if teleport fails
-	local success, errorMessage = pcall(function()
+	-- Prevents duplicate teleport calls per player
+	self.ActiveTeleports = {}
+
+	return self
+end
+
+--// INTERNAL UTILITIES
+
+-- Ensures character physics are stable before teleporting
+-- This avoids ragdolling, falling states, or velocity injection
+function TeleportController:_stabilizeCharacter(character: Model)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+
+	if not root or not humanoid then return end
+
+	-- Zero velocity to eliminate physics carryover
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+
+	-- Force humanoid into a neutral state
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+	-- Small yield to allow physics solver to settle
+	RunService.Heartbeat:Wait()
+
+	humanoid:ChangeState(Enum.HumanoidStateType.Running)
+end
+
+-- Positions camera deterministically before teleport
+-- This prevents abrupt camera snaps on the destination server
+function TeleportController:_prepareCamera(player: Player)
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = root.CFrame * CAMERA_OFFSET
+end
+
+--// TELEPORT EXECUTION
+
+function TeleportController:_executeTeleport(player: Player)
+	if self.ActiveTeleports[player] then return end
+	self.ActiveTeleports[player] = true
+
+	local character = player.Character or player.CharacterAdded:Wait()
+
+	-- Physics stabilization before teleport
+	self:_stabilizeCharacter(character)
+
+	-- Prepare teleport options
+	local options = Instance.new("TeleportOptions")
+	options.ShouldReserveServer = true
+	options:SetTeleportData(self.TeleportData)
+
+	-- Execute teleport safely
+	local success, err = pcall(function()
 		TeleportService:TeleportAsync(
 			DESTINATION_PLACE_ID,
 			{ player },
-			teleportOptions
+			options
 		)
 	end)
 
-	-- Log teleport failures for debugging and analytics
 	if not success then
-		warn(
-			string.format(
-				"[Teleport Failed] Player: %s | Reason: %s",
-				player.Name,
-				tostring(errorMessage)
-			)
-		)
+		warn("[TeleportController] Teleport failed:", err)
 	end
+
+	self.ActiveTeleports[player] = nil
 end
 
---// PLAYER JOIN CONNECTION
+--// PUBLIC API
 
--- When a player joins the server, immediately teleport them
--- This pattern is commonly used for: Lobby servers, Matchmaking hubs, Difficulty selectors
+function TeleportController:BindPlayer(player: Player)
+	-- Teleport only once character & camera are fully initialized
+	player.CharacterAdded:Wait()
+	task.wait(0.1)
+
+	self:_executeTeleport(player)
+end
+
+--// INITIALIZATION
+
+local Controller = TeleportController.new()
+
 Players.PlayerAdded:Connect(function(player)
-	teleportPlayer(player)
+	Controller:BindPlayer(player)
 end)
