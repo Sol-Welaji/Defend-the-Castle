@@ -1,150 +1,85 @@
-
--- SERVICES
-
--- Services are fetched once and cached to avoid repeated
--- global lookups and to make dependencies explicit
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
-local RunService = game:GetService("RunService")
 
--- DATASTORE SETUP
+local GemsController = {}
+GemsController.__index = GemsController
 
--- A single, versioned datastore name allows future migrations without wiping player data
-local GEMS_DATASTORE_NAME = "PlayerGemsData_v1"
-local GemsDataStore = DataStoreService:GetDataStore(GEMS_DATASTORE_NAME)
+-- Configuration values are centralized to avoid magic numbers
+local STORE_NAME = "PlayerGemsData"
+local MAX_RETRIES = 3
+local DEFAULT_GEMS = 0
 
--- CONFIGURATION CONSTANTS
-
--- Constants are centralized to avoid magic numbers
-local STARTING_GEMS = 0
-local MAX_RETRY_ATTEMPTS = 3
-local RETRY_DELAY = 1
-
--- INTERNAL STATE
--- Session cache prevents unnecessary DataStore calls and protects against overwriting newer values
-local sessionCache = {}
-
-
--- DATA LOADING
-
--- Loads player data safely with retries and session caching.
--- This function is intentionally isolated to make it reusable and easier to unit test in the future.
-local function loadPlayerData(player: Player): number
-	local userId = player.UserId
-	local attempts = 0
-
-	-- If data already exists in session cache, trust it
-	if sessionCache[userId] ~= nil then
-		return sessionCache[userId]
-	end
-
-	while attempts < MAX_RETRY_ATTEMPTS do
-		attempts += 1
-
-		local success, result = pcall(function()
-			return GemsDataStore:GetAsync(userId)
-		end)
-
-		if success then
-			-- Default to starting value if player is new
-			local gems = typeof(result) == "number" and result or STARTING_GEMS
-			sessionCache[userId] = gems
-			return gems
-		end
-
-		-- Exponential-style retry delay prevents request flooding
-		warn(string.format(
-			"[GEMS] Load failed for %s (Attempt %d)",
-			player.Name,
-			attempts
-		))
-		task.wait(RETRY_DELAY * attempts)
-	end
-
-	-- Fail-safe: never block player join due to datastore failure
-	sessionCache[userId] = STARTING_GEMS
-	return STARTING_GEMS
+-- Constructor
+-- Creates a new controller instance with its own DataStore reference
+function GemsController.new()
+	local self = setmetatable({}, GemsController)
+	self.Store = DataStoreService:GetDataStore(STORE_NAME)
+	return self
 end
 
--- DATA SAVING
--- Saves player data using UpdateAsync to prevent data loss when multiple servers attempt to write simultaneously
-local function savePlayerData(player: Player)
-	local userId = player.UserId
-	local cachedValue = sessionCache[userId]
-
-	-- If no cached data exists, there is nothing meaningful to save
-	if cachedValue == nil then
-		return
-	end
-
+-- Loads gem data for a player
+-- Uses retry logic to handle temporary DataStore outages
+function GemsController:Load(player: Player): number
 	local attempts = 0
+	local success, result
 
-	while attempts < MAX_RETRY_ATTEMPTS do
+	repeat
 		attempts += 1
-
-		local success, err = pcall(function()
-			GemsDataStore:UpdateAsync(userId, function(oldValue)
-				-- Old value is ignored intentionally; session cachd represents the most up-to-date server authority
-				return cachedValue
-			end)
+		success, result = pcall(function()
+			return self.Store:GetAsync(player.UserId)
 		end)
 
-		if success then
-			return
+		-- If the request fails, we wait briefly to avoid hammering DataStore limits
+		if not success then
+			task.wait(1)
 		end
+	until success or attempts >= MAX_RETRIES
 
-		warn(string.format(
-			"[GEMS] Save failed for %s (Attempt %d): %s",
-			player.Name,
-			attempts,
-			tostring(err)
-		))
-		task.wait(RETRY_DELAY * attempts)
-	end
+	-- If no data exists, player is treated as new
+	return result or DEFAULT_GEMS
 end
 
--- LEADERSTATS SETUP
+-- Saves gem data for a player
+-- Retry logic prevents permanent data loss on transient failures
+function GemsController:Save(player: Player, amount: number)
+	local attempts = 0
+	local success
 
--- Leaderstats creation is separated for clarity and reusability
-local function setupLeaderstats(player: Player, gemsAmount: number)
+	repeat
+		attempts += 1
+		success = pcall(function()
+			self.Store:SetAsync(player.UserId, amount)
+		end)
+
+		if not success then
+			task.wait(1)
+		end
+	until success or attempts >= MAX_RETRIES
+end
+
+-- Initializes leaderstats for a joining player
+-- This separates UI-facing stats from persistence logic
+function GemsController:InitializePlayer(player: Player)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
 	leaderstats.Parent = player
 
 	local gems = Instance.new("IntValue")
 	gems.Name = "Gems"
-	gems.Value = gemsAmount
+	gems.Value = self:Load(player)
 	gems.Parent = leaderstats
-
-	-- Synchronize runtime changes into the session cache
-	gems.Changed:Connect(function(newValue)
-		sessionCache[player.UserId] = newValue
-	end)
 end
 
--- PLAYER LIFECYCLE
+-- Cleans up and saves data when player leaves
+function GemsController:Cleanup(player: Player)
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if not leaderstats then return end
 
-Players.PlayerAdded:Connect(function(player)
-	-- Load persistent data first to avoid visual desync
-	local gemsAmount = loadPlayerData(player)
-
-	-- Create leaderboard values using loaded data
-	setupLeaderstats(player, gemsAmount)
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-	savePlayerData(player)
-	sessionCache[player.UserId] = nil
-end)
-
--- SERVER SHUTDOWN HANDLING
--- BindToClose ensures data is saved even during shutdown,
--- which is critical for live updates and private servers
-game:BindToClose(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		savePlayerData(player)
+	local gems = leaderstats:FindFirstChild("Gems")
+	if gems then
+		self:Save(player, gems.Value)
 	end
+end
 
-	-- Yield briefly to allow DataStore requests to complete
-	task.wait(2)
-end)
+return GemsController
+
